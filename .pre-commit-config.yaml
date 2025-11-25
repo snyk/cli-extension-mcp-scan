@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.1
+    hooks:
+      - id: gitleaks
+        stages: [pre-commit]
+
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.18.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional"]
+
+  - repo: local
+    hooks:
+    -   id: format
+        name: Run make format
+        entry: make
+        args:
+        - format
+        language: system
+        pass_filenames: false
+    -   id: lint
+        name: Run make lint
+        entry: make
+        args:
+        - lint
+        language: system
+        pass_filenames: false
