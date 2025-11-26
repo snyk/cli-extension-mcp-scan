@@ -6,4 +6,4 @@
 
 ## Overview
 
-This module implements the Snyk CLI Extension to scan your MCP tools or act as MCP proxy.
+This module implements the Snyk CLI Extension to scan your MCP tools.

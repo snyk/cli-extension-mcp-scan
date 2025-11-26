@@ -7,17 +7,14 @@ const (
 )
 
 const (
-	FlagOpt  = "opt"
 	FlagExperimental = "experimental"
-	FlagHelp = "help"
 )
 
 func getFlagSet() *pflag.FlagSet {
 	flagSet := pflag.NewFlagSet(flagSetName, pflag.ExitOnError)
 	flagSet.Bool(FlagExperimental, false, "This is an experiment feature that will contain breaking changes in future revisions")
-	flagSet.Bool(FlagOpt, false, "My option")
-	flagSet.Bool(FlagHelp, false, "Help")
-	
+	flagSet.String("client-id", "", "Client ID")
+	flagSet.String("tenant-id", "", "Tenant ID")
 
 	return flagSet
 }
