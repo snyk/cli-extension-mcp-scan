@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/snyk/go-application-framework/pkg/configuration"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 )
 
@@ -171,7 +172,14 @@ func getOrDownloadBinary(ctx workflow.InvocationContext) (string, error) {
 		return "", err
 	}
 
-	cacheDir := os.TempDir()
+	config := ctx.GetConfiguration()
+	cacheDir := config.GetString(configuration.CACHE_PATH)
+	if cacheDir == "" {
+		cacheDir = os.TempDir()
+	}
+	if mkdirErr := os.MkdirAll(cacheDir, 0o755); mkdirErr != nil {
+		return "", fmt.Errorf("failed to create cache directory %s: %w", cacheDir, mkdirErr)
+	}
 	cachePath := filepath.Join(cacheDir, asset.Name)
 	info, err := os.Stat(cachePath)
 	progressBar := ctx.GetUserInterface().NewProgressBar()
