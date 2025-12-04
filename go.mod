@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/snyk/error-catalog-golang-public v0.0.0-20251008132755-b542bb643649
-	github.com/snyk/go-application-framework v0.0.0-20251125151940-b1299180db56
+	github.com/snyk/go-application-framework v0.0.0-20251204104659-0f0d90ebebc2
 	github.com/spf13/pflag v1.0.6
 )
 
@@ -85,5 +85,3 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/snyk/go-application-framework => /home/antoine/Documents/SnykDev/go-application-framework
