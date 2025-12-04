@@ -7,3 +7,8 @@
 ## Overview
 
 This module implements the Snyk CLI Extension to scan your MCP tools.
+
+
+## Contributing
+
+This repository is closed to public contributions.
