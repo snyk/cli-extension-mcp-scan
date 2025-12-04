@@ -1,7 +1,6 @@
 package mcpscan
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 
@@ -40,14 +39,12 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	// Process raw args
 	rawArgs := config.GetStringSlice(configuration.RAW_CMD_ARGS)
 
-	clientID := config.GetString("client-id")
+	clientID := config.GetString(FlagClientID)
 	if clientID != "" && !utils.IsValidUUID(clientID) {
 		logger.Fatal().Msg("Client ID is not valid. Must be UUID")
 	}
-	tenantID := config.GetString("tenant-id")
-	if tenantID == "" {
-		tenantID = os.Getenv("SNYK_TENANT_ID")
-	}
+	tenantID := config.GetString(FlagTenantID)
+
 	if tenantID != "" && !utils.IsValidUUID(tenantID) {
 		logger.Fatal().Msg("Tenant ID is not valid. Must be UUID")
 	}

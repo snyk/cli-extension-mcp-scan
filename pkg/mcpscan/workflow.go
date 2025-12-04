@@ -19,7 +19,7 @@ var (
 // Init initializes the DepGraph workflow.
 func Init(engine workflow.Engine) error {
 	flags := getFlagSet()
-
+	engine.GetConfiguration().AddAlternativeKeys(FlagTenantID, []string{"SNYK_TENANT_ID"})
 	_, err := engine.Register(
 		ScanWorkflowID,
 		workflow.ConfigurationOptionsFromFlagset(flags),
