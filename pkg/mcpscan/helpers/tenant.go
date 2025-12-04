@@ -42,7 +42,7 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 	for _, tenant := range availableTenants {
 		tenantName = append(tenantName, tenant.Name)
 	}
-	selectedTenantName, selErr := ui.Selector("Select tenant", tenantName)
+	_, selectedTenantName, selErr := ui.SelectOptions("Select tenant", tenantName)
 	if selErr != nil {
 		if outErr := ui.OutputError(selErr); outErr != nil {
 			logger.Error().Err(outErr).Msg("Failed to output tenant selection error")
