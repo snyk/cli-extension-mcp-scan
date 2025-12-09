@@ -1,7 +1,9 @@
 package mcpscan
 
 import (
+	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -21,6 +23,27 @@ const (
 	clientIDFlagPrefix = "--client-id="
 )
 
+func checksumForCurrentPlatform() (string, error) {
+	switch runtime.GOOS {
+	case "linux":
+		if runtime.GOARCH == "amd64" {
+			if MCPScanBinaryChecksumLinuxAmd64 == "" {
+				return "", fmt.Errorf("checksum not configured for linux/amd64 platform")
+			}
+			return MCPScanBinaryChecksumLinuxAmd64, nil
+		}
+	case "darwin":
+		if runtime.GOARCH == "arm64" {
+			if MCPScanBinaryChecksumMacOSArm64 == "" {
+				return "", fmt.Errorf("checksum not configured for darwin/arm64 platform")
+			}
+			return MCPScanBinaryChecksumMacOSArm64, nil
+		}
+	}
+
+	return "", fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
 //nolint:gocyclo,nestif // Workflow wiring has necessary branching; extracting further would hurt clarity.
 func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Data, error) {
 	config := ctx.GetConfiguration()
@@ -34,6 +57,12 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	if !experimental {
 		logger.Debug().Msg("Required experimental flag is not present")
 		return nil, errors.NewCommandIsExperimentalError().SnykError
+	}
+
+	checksum, checksumErr := checksumForCurrentPlatform()
+	if checksumErr != nil {
+		logger.Debug().Err(checksumErr).Msg("Unsupported platform or checksum not configured for mcp-scan binary")
+		return nil, checksumErr
 	}
 
 	// Process raw args
@@ -68,8 +97,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	}
 	// Run help if requested
 	if isHelp {
-		if err := runner.ExecuteBinary(ctx, []string{"help"}); err != nil {
-			logger.Fatal().Err(err).Msg("Error running binary")
+		if err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum); err != nil {
+			logger.Debug().Err(err).Msg("Error running mcp-scan help binary")
+			return nil, fmt.Errorf("failed to run mcp-scan help binary: %w", err)
 		}
 		return nil, nil
 	}
@@ -120,8 +150,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	controlIdentifier := strings.TrimSpace(string(unameOut))
 	filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
 	// Run the embedded binary
-	if err := runner.ExecuteBinary(ctx, filteredArgs); err != nil {
-		logger.Fatal().Err(err).Msg("Error running binary")
+	if err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum); err != nil {
+		logger.Debug().Err(err).Msg("Error running mcp-scan binary")
+		return nil, fmt.Errorf("failed to run mcp-scan binary: %w", err)
 	}
 
 	return []workflow.Data{}, nil
