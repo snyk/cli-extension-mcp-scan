@@ -1,14 +1,13 @@
 package runner
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,10 +22,6 @@ import (
 type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
-}
-
-type githubRelease struct {
-	Assets []githubAsset `json:"assets"`
 }
 
 func httpGet(ctx workflow.InvocationContext, url string) (*http.Response, error) {
@@ -65,85 +60,24 @@ func platformAssetMatcher() (prefix, suffix string, err error) {
 	}
 }
 
-func fetchLatestAssetForPlatform(ctx workflow.InvocationContext) (*githubAsset, string, error) {
+func fetchAssetForVersionAndPlatform(_ workflow.InvocationContext, version string) (*githubAsset, error) {
 	prefix, suffix, err := platformAssetMatcher()
 	if err != nil {
-		return nil, "", err
+		return nil, err
+	}
+	trimmedVersion := strings.TrimSpace(version)
+	if trimmedVersion == "" {
+		return nil, fmt.Errorf("version must not be empty")
 	}
 
-	resp, err := httpGet(ctx, "https://api.github.com/repos/invariantlabs-ai/mcp-scan/releases/latest")
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to query GitHub releases: %w", err)
-	}
-	defer resp.Body.Close()
+	assetName := prefix + trimmedVersion + suffix
+	tag := "v" + trimmedVersion
+	downloadURL := "https://github.com/invariantlabs-ai/mcp-scan/releases/download/" + url.PathEscape(tag) + "/" + url.PathEscape(assetName)
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("failed to query GitHub releases: unexpected status %s", resp.Status)
-	}
-
-	var rel githubRelease
-	if decodeErr := json.NewDecoder(resp.Body).Decode(&rel); decodeErr != nil {
-		return nil, "", fmt.Errorf("failed to decode GitHub release response: %w", decodeErr)
-	}
-
-	var binaryAsset *githubAsset
-	var checksumAsset *githubAsset
-
-	for i := range rel.Assets {
-		asset := &rel.Assets[i]
-		if strings.HasPrefix(asset.Name, prefix) && strings.HasSuffix(asset.Name, suffix) {
-			binaryAsset = asset
-		}
-		if asset.Name == "checksums.txt" {
-			checksumAsset = asset
-		}
-	}
-
-	if binaryAsset == nil {
-		return nil, "", fmt.Errorf("no matching asset found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	if checksumAsset == nil {
-		return nil, "", fmt.Errorf("no checksums.txt asset found in latest release")
-	}
-
-	checksumResp, err := httpGet(ctx, checksumAsset.BrowserDownloadURL)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to download checksums.txt: %w", err)
-	}
-	defer checksumResp.Body.Close()
-
-	if checksumResp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("failed to download checksums.txt: unexpected status %s", checksumResp.Status)
-	}
-
-	checksum, err := parseChecksumForAsset(checksumResp.Body, binaryAsset.Name)
-	if err != nil {
-		return nil, "", err
-	}
-
-	return binaryAsset, checksum, nil
-}
-
-func parseChecksumForAsset(r io.Reader, assetName string) (string, error) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		name := fields[len(fields)-1]
-		if name == assetName {
-			return fields[0], nil
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read checksums.txt: %w", err)
-	}
-	return "", fmt.Errorf("no checksum entry found for asset %s", assetName)
+	return &githubAsset{
+		Name:               assetName,
+		BrowserDownloadURL: downloadURL,
+	}, nil
 }
 
 func verifyFileChecksum(path, expected string) (bool, error) {
@@ -165,9 +99,9 @@ func verifyFileChecksum(path, expected string) (bool, error) {
 // getOrDownloadBinary locates, downloads, verifies and caches the mcp-scan binary for this platform.
 //
 //nolint:gocyclo // The control flow is a bit involved but kept together for clarity.
-func getOrDownloadBinary(ctx workflow.InvocationContext) (string, error) {
+func getOrDownloadBinary(ctx workflow.InvocationContext, version, checksum string) (string, error) {
 	logger := ctx.GetEnhancedLogger()
-	asset, checksum, err := fetchLatestAssetForPlatform(ctx)
+	asset, err := fetchAssetForVersionAndPlatform(ctx, version)
 	if err != nil {
 		return "", err
 	}
@@ -191,22 +125,33 @@ func getOrDownloadBinary(ctx workflow.InvocationContext) (string, error) {
 		progressBar.SetTitle("Verifying cached mcp-scan binary")
 
 		ok, verr := verifyFileChecksum(cachePath, checksum)
-		if verr == nil && ok {
-			if perr := progressBar.UpdateProgress(1.0); perr != nil {
-				logger.Debug().Err(perr).Msg("failed to update progress bar after verifying cached binary")
+		if verr != nil {
+			logger.Error().Err(verr).Msg("Failed to verify checksum of cached mcp-scan binary")
+			if cerr := progressBar.Clear(); cerr != nil {
+				logger.Debug().Err(cerr).Msg("failed to clear progress bar after cached checksum verification error")
 			}
-			progressBar.SetTitle("Using cached mcp-scan binary")
-
-			time.AfterFunc(800*time.Millisecond, func() {
-				if cerr := progressBar.Clear(); cerr != nil {
-					logger.Debug().Err(cerr).Msg("failed to clear progress bar after using cached binary")
-				}
-			})
-			logger.Debug().Str("path", cachePath).Msg("Using cached mcp-scan binary")
-			return cachePath, nil
+			return "", fmt.Errorf("failed to verify checksum of cached mcp-scan binary: %w", verr)
 		}
-		logger.Error().Err(verr).Msg("Failed checksum verification of cached mcp-scan binary")
-		// If verification fails or errors, fall through to re-download
+		if !ok {
+			logger.Error().Msg("Checksum verification failed for cached mcp-scan binary")
+			if cerr := progressBar.Clear(); cerr != nil {
+				logger.Debug().Err(cerr).Msg("failed to clear progress bar after cached checksum mismatch")
+			}
+			return "", fmt.Errorf("checksum verification failed for cached mcp-scan binary")
+		}
+
+		if perr := progressBar.UpdateProgress(1.0); perr != nil {
+			logger.Debug().Err(perr).Msg("failed to update progress bar after verifying cached binary")
+		}
+		progressBar.SetTitle("Using cached mcp-scan binary")
+
+		time.AfterFunc(800*time.Millisecond, func() {
+			if cerr := progressBar.Clear(); cerr != nil {
+				logger.Debug().Err(cerr).Msg("failed to clear progress bar after using cached binary")
+			}
+		})
+		logger.Debug().Str("path", cachePath).Msg("Using cached mcp-scan binary")
+		return cachePath, nil
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("failed to stat cached binary: %w", err)
@@ -249,10 +194,16 @@ func getOrDownloadBinary(ctx workflow.InvocationContext) (string, error) {
 	ok, verr := verifyFileChecksum(tmpDownload.Name(), checksum)
 	if verr != nil {
 		_ = os.Remove(tmpDownload.Name())
+		if cerr := progressBar.Clear(); cerr != nil {
+			logger.Debug().Err(cerr).Msg("failed to clear progress bar after downloaded checksum verification error")
+		}
 		return "", fmt.Errorf("failed to verify downloaded binary checksum: %w", verr)
 	}
 	if !ok {
 		_ = os.Remove(tmpDownload.Name())
+		if cerr := progressBar.Clear(); cerr != nil {
+			logger.Debug().Err(cerr).Msg("failed to clear progress bar after downloaded checksum mismatch")
+		}
 		return "", fmt.Errorf("checksum verification failed for downloaded binary")
 	}
 
@@ -277,9 +228,9 @@ func getOrDownloadBinary(ctx workflow.InvocationContext) (string, error) {
 }
 
 // ExecuteBinary writes the binary to a temp file and runs it.
-func ExecuteBinary(ctx workflow.InvocationContext, args []string) error {
+func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, checksum string) error {
 	logger := ctx.GetEnhancedLogger()
-	binaryPath, err := getOrDownloadBinary(ctx)
+	binaryPath, err := getOrDownloadBinary(ctx, version, checksum)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to prepare mcp-scan binary")
 		return err
