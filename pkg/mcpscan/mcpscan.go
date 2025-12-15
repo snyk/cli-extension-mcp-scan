@@ -124,8 +124,20 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 			}
 			clientID, err = helpers.GetClientID(ctx, tenantID)
 			if err != nil {
-				if outErr := ui.OutputError(err); outErr != nil {
-					logger.Error().Err(outErr).Msg("Failed to output client id retrieval error")
+				errorString := strings.ToLower(err.Error())
+				var displayErr error
+				// Check if this is a forbidden error and use error catalog
+				switch {
+				case strings.Contains(errorString, "forbidden"):
+					displayErr = errors.NewUnauthorizedError("Insufficient permissions to access tenant [evo or tenant-admin].").SnykError
+				case strings.Contains(errorString, "unauthorized"):
+					displayErr = errors.NewUnauthorizedError("Authentication token is invalid or expired. Run `snyk auth` to re-authenticate.").SnykError
+				default:
+					displayErr = err
+				}
+
+				if outErr := ui.OutputError(displayErr); outErr != nil {
+					logger.Error().Err(outErr).Msg("Failed to display error")
 				}
 				logger.Fatal().Err(err).Msg("Failed to retrieve client id")
 			}

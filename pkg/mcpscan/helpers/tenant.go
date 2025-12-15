@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/utils"
+	"github.com/snyk/go-application-framework/pkg/configuration"
 	connectivity_check_extension "github.com/snyk/go-application-framework/pkg/local_workflows/connectivity_check_extension/connectivity"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 )
@@ -66,19 +67,11 @@ type clientIDResponse struct {
 func GetClientID(ctx workflow.InvocationContext, tenantID string) (string, error) {
 	client := ctx.GetNetworkAccess().GetHttpClient()
 
-	token := utils.CheckAuthentication(ctx)
-	if token == "" {
-		return "", fmt.Errorf("no authentication token available to request client id")
-	}
-
-	url := fmt.Sprintf("https://api.snyk.io/hidden/tenants/%s/mcp-scan/push-key?version=2025-08-28", tenantID)
+	url := fmt.Sprintf("https://%s/hidden/tenants/%s/mcp-scan/push-key?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL), tenantID)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("failed to create client id request: %w", err)
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -87,7 +80,14 @@ func GetClientID(ctx workflow.InvocationContext, tenantID string) (string, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("unexpected status when requesting client id: %s", resp.Status)
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return "", fmt.Errorf("forbidden: insufficient permissions to access tenant %s", tenantID)
+		case http.StatusUnauthorized:
+			return "", fmt.Errorf("unauthorized: authentication token is invalid or expired")
+		default:
+			return "", fmt.Errorf("unexpected status when requesting client id: %s", resp.Status)
+		}
 	}
 
 	var body clientIDResponse
