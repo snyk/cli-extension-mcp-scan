@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/helpers/tenantsapi"
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/utils"
 	"github.com/snyk/go-application-framework/pkg/configuration"
-	connectivity_check_extension "github.com/snyk/go-application-framework/pkg/local_workflows/connectivity_check_extension/connectivity"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 )
 
@@ -20,18 +20,35 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 	config := ctx.GetConfiguration()
 	logger := ctx.GetEnhancedLogger()
 	ui := ctx.GetUserInterface()
+	context := ctx.Context()
 
-	connectivityChecker := connectivity_check_extension.NewChecker(ctx.GetNetworkAccess(), logger, config)
+	httpClient := ctx.GetNetworkAccess().GetHttpClient()
+	tenantsClient, err := tenantsapi.NewClientWithResponses(config.GetString(configuration.API_URL), httpClient)
+	if err != nil {
+		if outErr := ui.OutputError(err); outErr != nil {
+			logger.Error().Err(outErr).Msg("Failed to output tenant client creation error")
+		}
+		logger.Fatal().Err(err).Msg("Failed to create tenants client")
+		return ""
+	}
 
-	availableTenants, err := connectivityChecker.CheckTenants(100)
+	limit := int32(100)
+	listTenantsParams := &tenantsapi.ListTenantsParams{
+		Limit: &limit,
+	}
+	tenantsResp, err := tenantsapi.ListTenants(context, tenantsClient, listTenantsParams)
 	if err != nil {
 		if outErr := ui.OutputError(err); outErr != nil {
 			logger.Error().Err(outErr).Msg("Failed to output tenant check error")
 		}
 		logger.Fatal().Err(err).Msg("Error checking tenants")
+		return ""
 	}
-	if availableTenants == nil {
+
+	availableTenants := tenantsResp.Tenants
+	if len(availableTenants) == 0 {
 		logger.Fatal().Msg("No available tenants found")
+		return ""
 	}
 
 	if len(availableTenants) == 1 {
@@ -67,7 +84,7 @@ type clientIDResponse struct {
 func GetClientID(ctx workflow.InvocationContext, tenantID string) (string, error) {
 	client := ctx.GetNetworkAccess().GetHttpClient()
 
-	url := fmt.Sprintf("https://%s/hidden/tenants/%s/mcp-scan/push-key?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL), tenantID)
+	url := fmt.Sprintf("%s/hidden/tenants/%s/mcp-scan/push-key?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL), tenantID)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("failed to create client id request: %w", err)
