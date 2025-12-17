@@ -150,9 +150,10 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 		}
 	}
 
+	controlServerURL := fmt.Sprintf("%s/hidden/mcp-scan/push?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL))
 	filteredArgs = append([]string{"scan"}, filteredArgs...)
 	filteredArgs = append(filteredArgs,
-		"--control-server", "https://api.snyk.io/hidden/mcp-scan/push?version=2025-08-28",
+		"--control-server", controlServerURL,
 		"--control-server-H", "x-client-id: "+clientID,
 	)
 	unameOut, err := exec.Command("uname", "-n").Output()

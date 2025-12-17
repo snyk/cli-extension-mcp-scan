@@ -4,6 +4,7 @@ go 1.24.3
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/zerolog v1.34.0
 	github.com/snyk/error-catalog-golang-public v0.0.0-20251008132755-b542bb643649
 	github.com/snyk/go-application-framework v0.0.0-20251204104659-0f0d90ebebc2
@@ -50,7 +51,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/oapi-codegen/runtime v1.1.1 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
