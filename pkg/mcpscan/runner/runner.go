@@ -231,12 +231,14 @@ func getOrDownloadBinary(ctx workflow.InvocationContext, version, checksum strin
 }
 
 // ExecuteBinary writes the binary to a temp file and runs it.
-func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, checksum string) error {
+// Returns the exit code and error. If the binary exits with a non-zero code,
+// the error will be non-nil and contain the exit code information.
+func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, checksum string) (int, error) {
 	logger := ctx.GetEnhancedLogger()
 	binaryPath, err := getOrDownloadBinary(ctx, version, checksum)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to prepare mcp-scan binary")
-		return err
+		return -1, err
 	}
 	logger.Debug().Str("binaryPath", binaryPath).Msg("Executing mcp-scan binary")
 
@@ -244,7 +246,7 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	// The "*" is a placeholder for a random string to ensure uniqueness
 	tmpFile, err := os.CreateTemp("", "mcp-scan-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return -1, fmt.Errorf("failed to create temp file: %w", err)
 	}
 
 	// 2. Ensure cleanup happens after execution
@@ -257,23 +259,23 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	src, err := os.Open(binaryPath)
 	if err != nil {
 		_ = tmpFile.Close()
-		return fmt.Errorf("failed to open binary for copying: %w", err)
+		return -1, fmt.Errorf("failed to open binary for copying: %w", err)
 	}
 	defer src.Close()
 
-	if _, err := io.Copy(tmpFile, src); err != nil {
+	if _, copyErr := io.Copy(tmpFile, src); copyErr != nil {
 		_ = tmpFile.Close()
-		return fmt.Errorf("failed to write binary: %w", err)
+		return -1, fmt.Errorf("failed to write binary: %w", copyErr)
 	}
 
 	// Close the file descriptor so we can execute it
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close file: %w", err)
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		return -1, fmt.Errorf("failed to close file: %w", closeErr)
 	}
 
 	// 4. Make the file executable (0700 = rwx for user)
-	if err := os.Chmod(tmpFile.Name(), 0o700); err != nil {
-		return fmt.Errorf("failed to chmod: %w", err)
+	if chmodErr := os.Chmod(tmpFile.Name(), 0o700); chmodErr != nil {
+		return -1, fmt.Errorf("failed to chmod: %w", chmodErr)
 	}
 
 	// 5. Prepare the command
@@ -285,10 +287,18 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
-	// 6. Run
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("execution failed: %w", err)
+	// 6. Run and capture exit code
+	err = cmd.Run()
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+			logger.Debug().Int("exitCode", exitCode).Msg("Binary exited with non-zero code")
+			return exitCode, fmt.Errorf("execution failed with exit code %d: %w", exitCode, err)
+		}
+		return -1, fmt.Errorf("execution failed: %w", err)
 	}
 
-	return nil
+	return exitCode, nil
 }

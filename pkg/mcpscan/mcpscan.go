@@ -97,8 +97,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	}
 	// Run help if requested
 	if isHelp {
-		if err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum); err != nil {
-			logger.Debug().Err(err).Msg("Error running mcp-scan help binary")
+		exitCode, err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum)
+		if err != nil {
+			logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan help binary")
 			return nil, fmt.Errorf("failed to run mcp-scan help binary: %w", err)
 		}
 		return nil, nil
@@ -149,7 +150,6 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 			logger.Fatal().Err(unauthErr).Msg("Snyk auth or provide valid client id (--client-id=<UUID>)")
 		}
 	}
-
 	controlServerURL := fmt.Sprintf("%s/hidden/mcp-scan/push?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL))
 	filteredArgs = append([]string{"scan"}, filteredArgs...)
 	filteredArgs = append(filteredArgs,
@@ -163,8 +163,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	controlIdentifier := strings.TrimSpace(string(unameOut))
 	filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
 	// Run the embedded binary
-	if err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum); err != nil {
-		logger.Debug().Err(err).Msg("Error running mcp-scan binary")
+	exitCode, err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum)
+	if err != nil {
+		logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan binary")
 		return nil, fmt.Errorf("failed to run mcp-scan binary: %w", err)
 	}
 
