@@ -12,9 +12,9 @@ import (
 	"github.com/snyk/go-application-framework/pkg/workflow"
 )
 
-func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
+func GetTenantID(ctx workflow.InvocationContext, tenantID string) (string, error) {
 	if tenantID != "" {
-		return tenantID
+		return tenantID, nil
 	}
 
 	config := ctx.GetConfiguration()
@@ -28,8 +28,8 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 		if outErr := ui.OutputError(err); outErr != nil {
 			logger.Error().Err(outErr).Msg("Failed to output tenant client creation error")
 		}
-		logger.Fatal().Err(err).Msg("Failed to create tenants client")
-		return ""
+		logger.Error().Err(err).Msg("Failed to create tenants client")
+		return "", fmt.Errorf("failed to create tenants client: %w", err)
 	}
 
 	limit := int32(100)
@@ -41,19 +41,19 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 		if outErr := ui.OutputError(err); outErr != nil {
 			logger.Error().Err(outErr).Msg("Failed to output tenant check error")
 		}
-		logger.Fatal().Err(err).Msg("Error checking tenants")
-		return ""
+		logger.Error().Err(err).Msg("Error checking tenants")
+		return "", fmt.Errorf("error checking tenants: %w", err)
 	}
 
 	availableTenants := tenantsResp.Tenants
 	if len(availableTenants) == 0 {
-		logger.Fatal().Msg("No available tenants found")
-		return ""
+		logger.Error().Msg("No available tenants found")
+		return "", fmt.Errorf("no available tenants found")
 	}
 
 	if len(availableTenants) == 1 {
 		tenantID = availableTenants[0].ID
-		return tenantID
+		return tenantID, nil
 	}
 
 	tenantName := []string{}
@@ -65,7 +65,8 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 		if outErr := ui.OutputError(selErr); outErr != nil {
 			logger.Error().Err(outErr).Msg("Failed to output tenant selection error")
 		}
-		logger.Fatal().Err(selErr).Msg("Error selecting tenant")
+		logger.Error().Err(selErr).Msg("Error selecting tenant")
+		return "", fmt.Errorf("error selecting tenant: %w", selErr)
 	}
 	for _, tenant := range availableTenants {
 		if tenant.Name == selectedTenantName {
@@ -74,7 +75,7 @@ func GetTenantID(ctx workflow.InvocationContext, tenantID string) string {
 		}
 	}
 
-	return tenantID
+	return tenantID, nil
 }
 
 type clientIDResponse struct {
