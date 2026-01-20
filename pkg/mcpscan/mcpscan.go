@@ -52,6 +52,8 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	engine := ctx.GetEngine()
 
 	experimental := config.GetBool(FlagExperimental)
+	json := config.GetBool(FlagJSON)
+
 	isHelp := false
 	// As this is an experimental feature, we only want to continue if the experimental flag is set
 	if !experimental {
@@ -131,6 +133,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 
 		if isLoggedIn {
 			if tenantID == "" {
+				if json {
+					return nil, fmt.Errorf("tenant ID is required when using --json flag. Please provide it using --tenant-id")
+				}
 				tenantID, err = helpers.GetTenantID(ctx, tenantID)
 				if err != nil {
 					return nil, fmt.Errorf("failed to get tenant ID: %w", err)

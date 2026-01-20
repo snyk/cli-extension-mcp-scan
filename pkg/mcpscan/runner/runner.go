@@ -161,8 +161,11 @@ func getOrDownloadBinary(ctx workflow.InvocationContext, version, checksum strin
 		logger.Debug().Err(perr).Msg("failed to update progress bar before download")
 	}
 	progressBar.SetTitle("Downloading mcp-scan binary")
-	if outErr := ctx.GetUserInterface().Output(fmt.Sprintf("Disclaimer: Downloading mcp-scan binary from %s", asset.BrowserDownloadURL)); outErr != nil {
-		logger.Debug().Err(outErr).Msg("failed to output download disclaimer")
+	json := config.GetBool("json")
+	if !json {
+		if outErr := ctx.GetUserInterface().Output(fmt.Sprintf("Disclaimer: Downloading mcp-scan binary from %s", asset.BrowserDownloadURL)); outErr != nil {
+			logger.Debug().Err(outErr).Msg("failed to output download disclaimer")
+		}
 	}
 	resp, err := httpGet(ctx, asset.BrowserDownloadURL)
 	if err != nil {
