@@ -70,12 +70,22 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 
 	clientID := config.GetString(FlagClientID)
 	if clientID != "" && !utils.IsValidUUID(clientID) {
-		logger.Fatal().Msg("Client ID is not valid. Must be UUID")
+		err := errors.NewInvalidClientIDError().SnykError
+		if outErr := ui.OutputError(err); outErr != nil {
+			logger.Error().Err(outErr).Msg("Failed to output invalid client ID error")
+		}
+		logger.Error().Msg("Client ID is not valid. Must be UUID")
+		return nil, err
 	}
 	tenantID := config.GetString(FlagTenantID)
 
 	if tenantID != "" && !utils.IsValidUUID(tenantID) {
-		logger.Fatal().Msg("Tenant ID is not valid. Must be UUID")
+		err := errors.NewInvalidTenantIDError().SnykError
+		if outErr := ui.OutputError(err); outErr != nil {
+			logger.Error().Err(outErr).Msg("Failed to output invalid tenant ID error")
+		}
+		logger.Error().Msg("Tenant ID is not valid. Must be UUID")
+		return nil, err
 	}
 
 	filteredArgs := make([]string, 0, len(rawArgs))
@@ -97,8 +107,9 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	}
 	// Run help if requested
 	if isHelp {
-		if err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum); err != nil {
-			logger.Debug().Err(err).Msg("Error running mcp-scan help binary")
+		exitCode, err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum)
+		if err != nil {
+			logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan help binary")
 			return nil, fmt.Errorf("failed to run mcp-scan help binary: %w", err)
 		}
 		return nil, nil
@@ -120,7 +131,10 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 
 		if isLoggedIn {
 			if tenantID == "" {
-				tenantID = helpers.GetTenantID(ctx, tenantID)
+				tenantID, err = helpers.GetTenantID(ctx, tenantID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get tenant ID: %w", err)
+				}
 			}
 			clientID, err = helpers.GetClientID(ctx, tenantID)
 			if err != nil {
@@ -139,17 +153,18 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 				if outErr := ui.OutputError(displayErr); outErr != nil {
 					logger.Error().Err(outErr).Msg("Failed to display error")
 				}
-				logger.Fatal().Err(err).Msg("Failed to retrieve client id")
+				logger.Error().Err(err).Msg("Failed to retrieve client id")
+				return nil, fmt.Errorf("failed to retrieve client id: %w", err)
 			}
 		} else {
 			unauthErr := errors.NewUnauthorizedError("Run `snyk auth` or provide valid client id (--client-id=<UUID>)").SnykError
 			if outErr := ui.OutputError(unauthErr); outErr != nil {
 				logger.Error().Err(outErr).Msg("Failed to output unauthorized error")
 			}
-			logger.Fatal().Err(unauthErr).Msg("Snyk auth or provide valid client id (--client-id=<UUID>)")
+			logger.Error().Err(unauthErr).Msg("Snyk auth or provide valid client id (--client-id=<UUID>)")
+			return nil, unauthErr
 		}
 	}
-
 	controlServerURL := fmt.Sprintf("%s/hidden/mcp-scan/push?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL))
 	filteredArgs = append([]string{"scan"}, filteredArgs...)
 	filteredArgs = append(filteredArgs,
@@ -158,13 +173,15 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	)
 	unameOut, err := exec.Command("uname", "-n").Output()
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to get uname")
+		logger.Error().Err(err).Msg("Failed to get uname")
+		return nil, fmt.Errorf("failed to get uname: %w", err)
 	}
 	controlIdentifier := strings.TrimSpace(string(unameOut))
 	filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
 	// Run the embedded binary
-	if err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum); err != nil {
-		logger.Debug().Err(err).Msg("Error running mcp-scan binary")
+	exitCode, err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum)
+	if err != nil {
+		logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan binary")
 		return nil, fmt.Errorf("failed to run mcp-scan binary: %w", err)
 	}
 

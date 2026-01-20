@@ -11,7 +11,10 @@ func TestGetTenantID_ReturnsProvidedID(t *testing.T) {
 	const expected = "tenant-1234"
 
 	// ctx is nil here on purpose; implementation should short-circuit on non-empty tenantID
-	got := helpers.GetTenantID(nil, expected)
+	got, err := helpers.GetTenantID(nil, expected)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
 	}
