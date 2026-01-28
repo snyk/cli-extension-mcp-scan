@@ -9,10 +9,10 @@ import (
 const (
 	ScanWorkflowIDStr = "mcp-scan"
 
-	MCPScanBinaryVersion = "0.3.36"
+	MCPScanBinaryVersion = "0.3.38"
 
-	MCPScanBinaryChecksumLinuxAmd64 = "faf799e02675ee7d963b1cc7bb018ee1fa7ccd281b28b5cc873f3896db53730a"
-	MCPScanBinaryChecksumMacOSArm64 = "26b88347d951de72d5969275c1bf20cc4023cf0db1add6a3ea1ded5ec50b02a4"
+	MCPScanBinaryChecksumLinuxAmd64 = "7d368527a490f4aea0468d37f8b77ff4cb852d4d794b811276c90ec2484e4da9"
+	MCPScanBinaryChecksumMacOSArm64 = "af8d9833cad51e10443ffbe05b3556f2b5c31fc873fc14b98f8db13d5a1a8f7b"
 )
 
 var (
