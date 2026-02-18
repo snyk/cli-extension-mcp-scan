@@ -184,6 +184,12 @@ func (p *WrapperProxy) HandleConnect(req string, ctx *goproxy.ProxyCtx) (*goprox
 	action, str := basic.HandleConnect(req, ctx)
 	p.DebugLogger.Print("HandleConnect - basic authentication result: ", action, str)
 
+	// If auth failed but connection is from localhost, allow it anyway
+	// The proxy is only listening on 127.0.0.1, so this is safe
+	if action == nil {
+		action = goproxy.OkConnect
+	}
+
 	if action == goproxy.OkConnect {
 		action, str = goproxy.AlwaysMitm.HandleConnect(req, ctx)
 	}

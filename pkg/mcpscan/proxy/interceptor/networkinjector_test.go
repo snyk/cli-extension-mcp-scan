@@ -40,13 +40,15 @@ func TestNetworkInjector_ErrorHandling(t *testing.T) {
 	ni := NewNetworkInjector(invocationCtxMock)
 	handler := ni.GetHandler()
 
-	req := &http.Request{}
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	proxyCtx := &goproxy.ProxyCtx{}
 
 	_, resp := handler(req, proxyCtx)
 
 	// We rely on goproxy's error context when RoundTrips fail in the interceptor.
-	assert.Equal(t, expectedErr, proxyCtx.Error, "proxyCtx.Error should be populated with the RoundTrip error")
+	// The http.Client wraps the transport error in a url.Error, so we check that the error is present
+	assert.NotNil(t, proxyCtx.Error, "proxyCtx.Error should be populated with the RoundTrip error")
+	assert.Contains(t, proxyCtx.Error.Error(), expectedErr.Error(), "proxyCtx.Error should contain the original error")
 
 	// Goproxy will send the request again if the response is nil, why it's imperative this does not happen.
 	assert.Nil(t, resp, "response should not be nil when RoundTrip returns an error")

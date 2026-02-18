@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/proxy"
 	"github.com/snyk/go-application-framework/pkg/configuration"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 )
@@ -288,18 +289,19 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	// Configure proxy if provided
 	if proxyInfo != nil {
 		// Type assert to get the proxy info structure
-		type ProxyInfo struct {
-			Port                int
-			Password            string
-			CertificateLocation string
-		}
-		if pi, ok := proxyInfo.(*ProxyInfo); ok {
-			// Set proxy environment variables
+		if pi, ok := proxyInfo.(*proxy.ProxyInfo); ok {
+			// Set proxy environment variables (both uppercase and lowercase for compatibility)
 			proxyURL := fmt.Sprintf("http://snykcli:%s@127.0.0.1:%d", pi.Password, pi.Port)
 			cmd.Env = append(os.Environ(),
 				fmt.Sprintf("HTTP_PROXY=%s", proxyURL),
 				fmt.Sprintf("HTTPS_PROXY=%s", proxyURL),
+				fmt.Sprintf("http_proxy=%s", proxyURL),
+				fmt.Sprintf("https_proxy=%s", proxyURL),
+				fmt.Sprintf("ALL_PROXY=%s", proxyURL),
+				fmt.Sprintf("all_proxy=%s", proxyURL),
 				fmt.Sprintf("NODE_EXTRA_CA_CERTS=%s", pi.CertificateLocation),
+				fmt.Sprintf("SSL_CERT_FILE=%s", pi.CertificateLocation),
+				fmt.Sprintf("REQUESTS_CA_BUNDLE=%s", pi.CertificateLocation),
 			)
 			logger.Debug().
 				Str("proxyURL", fmt.Sprintf("http://snykcli:***@127.0.0.1:%d", pi.Port)).
