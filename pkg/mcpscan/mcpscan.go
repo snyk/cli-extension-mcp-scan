@@ -9,6 +9,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/errors"
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/helpers"
+	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/proxy"
+	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/proxy/interceptor"
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/runner"
 	"github.com/snyk/cli-extension-mcp-scan/pkg/mcpscan/utils"
 	"github.com/snyk/go-application-framework/pkg/configuration"
@@ -109,7 +111,7 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	}
 	// Run help if requested
 	if isHelp {
-		exitCode, err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum)
+		exitCode, err := runner.ExecuteBinary(ctx, []string{"help"}, MCPScanBinaryVersion, checksum, nil)
 		if err != nil {
 			logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan help binary")
 			return nil, fmt.Errorf("failed to run mcp-scan help binary: %w", err)
@@ -183,8 +185,37 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 	}
 	controlIdentifier := strings.TrimSpace(string(unameOut))
 	filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
+
+	// Initialize proxy for credential injection
+	caData, err := proxy.InitCA(config, MCPScanBinaryVersion, logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to initialize proxy CA")
+		return nil, fmt.Errorf("failed to initialize proxy CA: %w", err)
+	}
+
+	wrapperProxy, err := proxy.NewWrapperProxy(config, MCPScanBinaryVersion, logger, *caData)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create wrapper proxy")
+		return nil, fmt.Errorf("failed to create wrapper proxy: %w", err)
+	}
+
+	// Register interceptor to inject credentials via framework's networking layer
+	networkInterceptor := interceptor.NewNetworkInjector(ctx)
+	wrapperProxy.RegisterInterceptor(networkInterceptor)
+	logger.Debug().Msg("Registered network interceptor for credential injection")
+
+	err = wrapperProxy.Start()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to start proxy")
+		return nil, fmt.Errorf("failed to start proxy: %w", err)
+	}
+	defer wrapperProxy.Close()
+
+	proxyInfo := wrapperProxy.ProxyInfo()
+	logger.Debug().Int("proxyPort", proxyInfo.Port).Msg("Proxy started successfully")
+
 	// Run the embedded binary
-	exitCode, err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum)
+	exitCode, err := runner.ExecuteBinary(ctx, filteredArgs, MCPScanBinaryVersion, checksum, proxyInfo)
 	if err != nil {
 		logger.Debug().Err(err).Int("exitCode", exitCode).Msg("Error running mcp-scan binary")
 		return nil, fmt.Errorf("failed to run mcp-scan binary: %w", err)

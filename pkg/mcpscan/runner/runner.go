@@ -236,7 +236,7 @@ func getOrDownloadBinary(ctx workflow.InvocationContext, version, checksum strin
 // ExecuteBinary writes the binary to a temp file and runs it.
 // Returns the exit code and error. If the binary exits with a non-zero code,
 // the error will be non-nil and contain the exit code information.
-func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, checksum string) (int, error) {
+func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, checksum string, proxyInfo interface{}) (int, error) {
 	logger := ctx.GetEnhancedLogger()
 	binaryPath, err := getOrDownloadBinary(ctx, version, checksum)
 	if err != nil {
@@ -284,6 +284,29 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	// 5. Prepare the command
 	//nolint:gosec // tmpFile is a local executable we've just written and chmodded; args are passed as-is from the CLI.
 	cmd := exec.Command(tmpFile.Name(), args...)
+
+	// Configure proxy if provided
+	if proxyInfo != nil {
+		// Type assert to get the proxy info structure
+		type ProxyInfo struct {
+			Port                int
+			Password            string
+			CertificateLocation string
+		}
+		if pi, ok := proxyInfo.(*ProxyInfo); ok {
+			// Set proxy environment variables
+			proxyURL := fmt.Sprintf("http://snykcli:%s@127.0.0.1:%d", pi.Password, pi.Port)
+			cmd.Env = append(os.Environ(),
+				fmt.Sprintf("HTTP_PROXY=%s", proxyURL),
+				fmt.Sprintf("HTTPS_PROXY=%s", proxyURL),
+				fmt.Sprintf("NODE_EXTRA_CA_CERTS=%s", pi.CertificateLocation),
+			)
+			logger.Debug().
+				Str("proxyURL", fmt.Sprintf("http://snykcli:***@127.0.0.1:%d", pi.Port)).
+				Str("certLocation", pi.CertificateLocation).
+				Msg("Configured binary to use proxy")
+		}
+	}
 
 	// Connect standard input/output if you want to see the binary's output
 	cmd.Stdout = os.Stdout
