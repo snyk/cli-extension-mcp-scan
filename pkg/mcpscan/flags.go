@@ -8,6 +8,7 @@ const (
 	FlagClientID     = "client-id"
 	FlagTenantID     = "tenant-id"
 	FlagJSON         = "json"
+	FlagSkills       = "skills"
 )
 
 func getFlagSet() *pflag.FlagSet {
@@ -16,5 +17,7 @@ func getFlagSet() *pflag.FlagSet {
 	flagSet.String(FlagClientID, "", "Client ID")
 	flagSet.String(FlagTenantID, "", "Tenant ID")
 	flagSet.Bool(FlagJSON, false, "Output in JSON format")
+	flagSet.String(FlagSkills, "", "Scan skills beyond mcp servers. Can be used as a boolean flag or with a folder path.")
+	flagSet.Lookup(FlagSkills).NoOptDefVal = "true"
 	return flagSet
 }
