@@ -1,2 +1,5 @@
 ### Tooling ###
 /.bin/
+
+## Test binaries
+mcpscan.test
