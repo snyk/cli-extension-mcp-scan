@@ -286,13 +286,16 @@ func ExecuteBinary(ctx workflow.InvocationContext, args []string, version, check
 	//nolint:gosec // tmpFile is a local executable we've just written and chmodded; args are passed as-is from the CLI.
 	cmd := exec.Command(tmpFile.Name(), args...)
 
+	// Set base environment variables
+	cmd.Env = append(os.Environ(), "SNYK_CLI_USE=true")
+
 	// Configure proxy if provided
 	if proxyInfo != nil {
 		// Type assert to get the proxy info structure
 		if pi, ok := proxyInfo.(*proxy.ProxyInfo); ok {
 			// Set proxy environment variables (both uppercase and lowercase for compatibility)
 			proxyURL := fmt.Sprintf("http://snykcli:%s@127.0.0.1:%d", pi.Password, pi.Port)
-			cmd.Env = append(os.Environ(),
+			cmd.Env = append(cmd.Env,
 				fmt.Sprintf("HTTP_PROXY=%s", proxyURL),
 				fmt.Sprintf("HTTPS_PROXY=%s", proxyURL),
 				fmt.Sprintf("http_proxy=%s", proxyURL),
