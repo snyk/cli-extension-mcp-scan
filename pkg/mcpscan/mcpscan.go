@@ -55,6 +55,7 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 
 	experimental := config.GetBool(FlagExperimental)
 	json := config.GetBool(FlagJSON)
+	noUpload := config.GetBool(FlagNoUpload)
 
 	isHelp := false
 	// As this is an experimental feature, we only want to continue if the experimental flag is set
@@ -94,7 +95,7 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 
 	filteredArgs := make([]string, 0, len(rawArgs))
 	for _, a := range rawArgs {
-		if a == "mcp-scan" || a == "--experimental" {
+		if a == "mcp-scan" || a == "--experimental" || a == "--no-upload" {
 			continue
 		}
 		if a == "help" {
@@ -119,12 +120,22 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 		return nil, nil
 	}
 
-	// 2 modes of operation
-	// 1. We're logged in, we retrieve the client id via API and push against the authenticated push endpoint
-	// 2. We're not logged in, we expect the client id via parameters and push against the unauthenticated push endpoint
-	// 3. Error otherwise
-
-	if clientID == "" {
+	// When --no-upload is set, we must be logged in but don't need client-id
+	if noUpload {
+		_, err := engine.InvokeWithConfig(localworkflows.WORKFLOWID_WHOAMI, config)
+		if err != nil {
+			unauthErr := errors.NewUnauthorizedError("--no-upload requires authentication. Run `snyk auth` to authenticate.").SnykError
+			if outErr := ui.OutputError(unauthErr); outErr != nil {
+				logger.Error().Err(outErr).Msg("Failed to output unauthorized error")
+			}
+			logger.Error().Err(unauthErr).Msg("--no-upload requires authentication")
+			return nil, unauthErr
+		}
+	} else if clientID == "" {
+		// 2 modes of operation
+		// 1. We're logged in, we retrieve the client id via API and push against the authenticated push endpoint
+		// 2. We're not logged in, we expect the client id via parameters and push against the unauthenticated push endpoint
+		// 3. Error otherwise
 		isLoggedIn := false
 
 		_, err := engine.InvokeWithConfig(localworkflows.WORKFLOWID_WHOAMI, config)
@@ -172,21 +183,28 @@ func Workflow(ctx workflow.InvocationContext, _ []workflow.Data) ([]workflow.Dat
 			return nil, unauthErr
 		}
 	}
-	controlServerURL := fmt.Sprintf("%s/hidden/mcp-scan/push?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL))
-	analysisServerURL := fmt.Sprintf("%s/hidden/mcp-scan/analysis-machine?version=2025-09-02", ctx.GetConfiguration().GetString(configuration.API_URL))
+
 	filteredArgs = append([]string{"scan"}, filteredArgs...)
-	filteredArgs = append(filteredArgs,
-		"--control-server", controlServerURL,
-		"--control-server-H", "x-client-id: "+clientID,
-		"--analysis-url", analysisServerURL,
-	)
-	unameOut, err := exec.Command("uname", "-n").Output()
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to get uname")
-		return nil, fmt.Errorf("failed to get uname: %w", err)
+
+	// Always set analysis URL
+	analysisServerURL := fmt.Sprintf("%s/hidden/mcp-scan/analysis-machine?version=2025-09-02", ctx.GetConfiguration().GetString(configuration.API_URL))
+	filteredArgs = append(filteredArgs, "--analysis-url", analysisServerURL)
+
+	// Only add control server arguments when not using --no-upload
+	if !noUpload {
+		controlServerURL := fmt.Sprintf("%s/hidden/mcp-scan/push?version=2025-08-28", ctx.GetConfiguration().GetString(configuration.API_URL))
+		filteredArgs = append(filteredArgs,
+			"--control-server", controlServerURL,
+			"--control-server-H", "x-client-id: "+clientID,
+		)
+		unameOut, err := exec.Command("uname", "-n").Output()
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to get uname")
+			return nil, fmt.Errorf("failed to get uname: %w", err)
+		}
+		controlIdentifier := strings.TrimSpace(string(unameOut))
+		filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
 	}
-	controlIdentifier := strings.TrimSpace(string(unameOut))
-	filteredArgs = append(filteredArgs, "--control-identifier", controlIdentifier)
 
 	// Initialize proxy for credential injection
 	caData, err := proxy.InitCA(config, MCPScanBinaryVersion, logger)
