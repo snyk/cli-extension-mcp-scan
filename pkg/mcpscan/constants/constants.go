@@ -1,0 +1,3 @@
+package constants
+
+const SNYK_CA_CERTIFICATE_LOCATION_ENV = "NODE_EXTRA_CA_CERTS"
