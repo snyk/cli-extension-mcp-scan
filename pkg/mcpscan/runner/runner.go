@@ -73,7 +73,7 @@ func fetchAssetForVersionAndPlatform(_ workflow.InvocationContext, version strin
 
 	assetName := prefix + trimmedVersion + suffix
 	tag := "v" + trimmedVersion
-	downloadURL := "https://github.com/invariantlabs-ai/mcp-scan/releases/download/" + url.PathEscape(tag) + "/" + url.PathEscape(assetName)
+	downloadURL := "https://github.com/snyk/agent-scan/releases/download/" + url.PathEscape(tag) + "/" + url.PathEscape(assetName)
 
 	return &githubAsset{
 		Name:               assetName,
